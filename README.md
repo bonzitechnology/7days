@@ -44,15 +44,20 @@ python3 audit_7days.py --all
 ## Verification Suite
 The project includes a Docker-based environment for verifying enforcement logic across supported ecosystems.
 
-### Environment Setup
+### Automated Suite
+A single script is provided to build the environment and run all tests (Unittest, Integration, and Empirical).
 ```bash
-docker build -t 7days-test -f tests/Dockerfile .
+bash tests/run_tests.sh
 ```
 
-### Execution
+### Manual Execution
+*   **Environment Setup**
+    ```bash
+    docker build -t 7days-test -f tests/Dockerfile .
+    ```
 *   **Unit Tests:** Verifies internal logic using mocked dependencies.
     ```bash
-    docker run --rm 7days-test python3 test_setup_7days.py
+    docker run --rm 7days-test python3 tests/test_setup_7days.py
     ```
 *   **Structural Integration:** Verifies correct configuration file generation and placement.
     ```bash
