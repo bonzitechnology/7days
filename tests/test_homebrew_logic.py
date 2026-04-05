@@ -10,7 +10,7 @@ import setup_7days
 
 class TestHomebrewLogic(unittest.TestCase):
     def setUp(self):
-        self.mock_root = Path("/tmp/mock_brew_logic")
+        self.mock_root = Path("tests/mock_brew_logic")
         if self.mock_root.exists():
             shutil.rmtree(self.mock_root)
         self.mock_root.mkdir(parents=True)

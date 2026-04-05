@@ -45,7 +45,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 # Set up a global virtual environment for Python to avoid PEP 668
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip pipx
 
 WORKDIR /app
 COPY . .

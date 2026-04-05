@@ -7,6 +7,7 @@ import datetime
 import urllib.request
 import concurrent.futures
 import re
+import subprocess
 from pathlib import Path
 
 # --- Configuration ---
@@ -149,6 +150,35 @@ def audit_python():
                 found_danger = True
         if not found_danger: success("No 'young' Python packages found.")
 
+def audit_pipx():
+    log("Auditing pipx installed packages...")
+    try:
+        res = subprocess.run(["pipx", "list", "--json"], capture_output=True, text=True)
+        if res.returncode != 0:
+            warn("pipx list --json failed. Is pipx installed?")
+            return
+        data = json.loads(res.stdout)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        tasks = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            for venv_name, venv_info in data.get("venvs", {}).items():
+                metadata = venv_info.get("metadata", {})
+                main_pkg = metadata.get("main_package", {})
+                name = main_pkg.get("package")
+                version = main_pkg.get("package_version")
+                if name and version:
+                    tasks.append(executor.submit(check_package, "pypi", name, version, now))
+        
+        found_danger = False
+        for future in concurrent.futures.as_completed(tasks):
+            res = future.result()
+            if res and "[DANGER]" in res:
+                print(res)
+                found_danger = True
+        if not found_danger: success("No 'young' pipx packages found.")
+    except Exception as e:
+        warn(f"Failed to audit pipx: {e}")
+
 def audit_composer():
     if not Path("composer.lock").exists(): return
     log("Auditing composer.lock...")
@@ -191,14 +221,16 @@ def main():
     parser = argparse.ArgumentParser(description="7days Audit: Scan lockfiles for 'young' dependencies.")
     parser.add_argument("--npm", action="store_true")
     parser.add_argument("--pip", action="store_true")
+    parser.add_argument("--pipx", action="store_true")
     parser.add_argument("--composer", action="store_true")
     parser.add_argument("--cargo", action="store_true")
     parser.add_argument("--all", action="store_true")
     args = parser.parse_args()
-    if not any([args.npm, args.pip, args.composer, args.cargo, args.all]):
+    if not any([args.npm, args.pip, args.pipx, args.composer, args.cargo, args.all]):
         parser.print_help(); sys.exit(1)
     if args.npm or args.all: audit_npm()
     if args.pip or args.all: audit_python()
+    if args.pipx or args.all: audit_pipx()
     if args.composer or args.all: audit_composer()
     if args.cargo or args.all: audit_cargo()
 

@@ -15,6 +15,7 @@ The utility enforces a delay between the timestamp of a package release and its 
 | **Bun** | `minimumReleaseAge` | v1.3.0+ | `bunfig.toml` (seconds) |
 | **Deno** | `minimumDependencyAge`| v2.0.0+ | `.deno.json` |
 | **pip** | `uploaded-prior-to` | v26.0.0+ | `pip.conf` & Environment Variable |
+| **pipx** | N/A | v1.7.0+ | Inherits pip/uv environment |
 | **uv** | `--exclude-newer` | v0.5.0+ | `UV_EXCLUDE_NEWER` |
 | **Conda** | `cooldown` | v26.3.0+ | `conda config` |
 | **Composer** | `minimum-release-age` | v2.10.0+ | `composer config --global` |
@@ -33,12 +34,12 @@ python3 setup_7days.py
 Scans project lockfiles and queries registry APIs to identify dependencies released within the enforcement window.
 ```bash
 # Ecosystem-specific scan
-python3 audit_7days.py --npm --pip --cargo --composer
+python3 audit_7days.py --npm --pip --pipx --cargo --composer
 
 # Comprehensive scan
 python3 audit_7days.py --all
 ```
-**Supported Lockfiles:** `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `requirements.txt`, `composer.lock`, `Cargo.lock`.
+**Supported Lockfiles:** `package-lock.json`, `pnpm-lock.yaml`, `poetry.lock`, `requirements.txt`, `composer.lock`, `Cargo.lock`. (Note: `pipx` uses system list).
 
 ## Verification Suite
 The project includes a Docker-based environment for verifying enforcement logic across supported ecosystems.

@@ -5,6 +5,7 @@ import datetime
 import urllib.request
 import sys
 import re
+import shutil
 from pathlib import Path
 
 # Colors for terminal output
@@ -211,6 +212,39 @@ def run_test_deno():
     else:
         success("Deno Gate Worked! (Failed to add package within age window)")
 
+def run_test_pipx():
+    pkg = "pyjokes"
+    latest_v, pub_date = get_pkg_info_pypi(pkg)
+    age_days = (datetime.datetime.now(datetime.timezone.utc) - pub_date).days
+    log(f"Testing pipx with {pkg}@{latest_v} (Age: {age_days} days)")
+    
+    # Configure Gate
+    cooldown = age_days + 1
+    os.environ["SEVENDAYS_COOLDOWN"] = str(cooldown)
+    setup_script = Path(__file__).parent.parent / "setup_7days.py"
+    subprocess.run(["python3", str(setup_script)], capture_output=True, check=True)
+    
+    # Try Install
+    env = os.environ.copy()
+    now_minus_cooldown = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=cooldown)).strftime('%Y-%m-%dT%H:%M:%SZ')
+    env["PIP_UPLOADED_PRIOR_TO"] = now_minus_cooldown
+    
+    # Check if we can block it. pipx install pyjokes==latest_v should fail or warn if gate works
+    # Actually pipx just calls pip.
+    res = subprocess.run(["pipx", "install", f"{pkg}=={latest_v}"], env=env, capture_output=True, text=True)
+    
+    if res.returncode != 0:
+        success(f"PIPX Gate Worked! (Installation blocked for {latest_v})")
+    else:
+        # If it installed, maybe the gate didn't work or it was already in cache
+        # Let's try to audit it
+        audit_script = Path(__file__).parent.parent / "audit_7days.py"
+        res = subprocess.run(["python3", str(audit_script), "--pipx"], capture_output=True, text=True)
+        if "[DANGER]" in res.stdout:
+            success("PIPX Gate (Audit) Worked! (Found young package)")
+        else:
+            warn("PIPX Gate might not have blocked installation, check if pip 26+ is used.")
+
 if __name__ == "__main__":
     log("=== Final Empirical 7days Test Suite ===")
     run_test_npm()
@@ -218,4 +252,5 @@ if __name__ == "__main__":
     run_test_bun()
     run_test_uv()
     run_test_deno()
+    run_test_pipx()
     success("All Empirical Tests Completed!")

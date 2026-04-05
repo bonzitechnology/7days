@@ -15,6 +15,7 @@ MIN_YARN_VERSION = (4, 10, 0)
 MIN_BUN_VERSION = (1, 3, 0)
 MIN_DENO_VERSION = (2, 0, 0)
 MIN_PIP_VERSION = (26, 0, 0)
+MIN_PIPX_VERSION = (1, 7, 0)
 MIN_COMPOSER_VERSION = (2, 10, 0)
 MIN_CONDA_VERSION = (26, 3, 0)
 MIN_CARGO_VERSION = (1, 94, 0)
@@ -33,6 +34,7 @@ UPDATE_TEMPLATES = {
     "bun": "{path} upgrade",
     "deno": "{path} upgrade",
     "pip": "{python_path} -m pip install --upgrade pip",
+    "pipx": "{python_path} -m pip install --upgrade pipx",
     "uv": "{path} self-update",
     "conda": "{path} update -n base -c defaults conda",
     "composer": "{path} self-update --preview",
@@ -46,6 +48,7 @@ BREW_FORMULAS = {
     "bun": "bun",
     "deno": "deno",
     "pip": "python",
+    "pipx": "pipx",
     "uv": "uv",
     "composer": "composer",
     "cargo": "rust"
@@ -89,13 +92,15 @@ def is_homebrew_managed(path, name=None):
     try:
         p = Path(path)
         resolved = str(p.resolve())
-        # Check known path patterns
+        # Check known path patterns for Homebrew/Linuxbrew installations
         if any(x in resolved for x in ["/Cellar/", "/opt/homebrew/", "/Caskroom/", "/.linuxbrew/"]):
             return True
-        # Check against dynamic brew prefix
+        # Check against dynamic brew prefix, but be more specific to avoid false positives in /usr/local
         prefix = get_brew_prefix()
-        if prefix and resolved.startswith(prefix):
-            return True
+        if prefix:
+            prefix_p = Path(prefix)
+            if any(resolved.startswith(str(prefix_p / x) + "/") for x in ["Cellar", "Caskroom", "opt"]):
+                return True
         # For npm, check if the node it uses is brew managed
         if name == "npm":
             node_path = shutil.which("node")
@@ -113,6 +118,7 @@ def get_tool_version(path, name):
         "bun": r'^(\d+\.\d+\.\d+)',
         "deno": r'deno\s+([\d.]+)',
         "pip": r'pip\s+([\d.]+)',
+        "pipx": r'pipx\s+([\d.]+)',
         "uv": r'uv\s+([\d.]+)',
         "conda": r'conda\s+([\d.]+)',
         "composer": r'Composer\s+version\s+([^\s,]+)',
@@ -144,34 +150,45 @@ def version_too_low(name, v, min_v, path):
     print(f"    {RED}ACTION REQUIRED:{RESET} Update {name} and run this script again.")
     
     cmd = None
-    if is_homebrew_managed(path, name):
+    is_brew = is_homebrew_managed(path, name)
+    resolved = str(Path(path).resolve())
+    
+    # If it's in a cellar but not the 'pipx' formula, it's likely a pip install in brew python
+    if name == "pipx" and is_brew and "/Cellar/pipx/" not in resolved and "/opt/homebrew/opt/pipx/" not in resolved:
+        is_brew = False
+
+    if is_brew:
         formula = BREW_FORMULAS.get(name, name)
         if name == "pip":
-            resolved = str(Path(path).resolve())
             match = re.search(r'python@([\d.]+)', resolved)
             formula = f"python@{match.group(1)}" if match else "python"
         print(f"    {RESET}Note: {name} appears to be managed by Homebrew.")
         cmd = f"brew upgrade {formula}"
-    elif name == "pip":
-        pip_path = Path(path)
+    elif name in ["pip", "pipx"]:
+        tool_path = Path(path)
         python_path = None
-        for possible in [pip_path.name.replace("pip", "python"), "python3", "python"]:
-            p_check = pip_path.parent / possible
-            if p_check.exists():
-                python_path = str(p_check.absolute())
-                break
+        
+        # 1. Try shebang first as it's the most definitive for scripts
+        try:
+            with open(tool_path, 'rb') as f:
+                line = f.readline()
+                if line.startswith(b'#!'):
+                    parts = line[2:].strip().decode().split()
+                    if parts:
+                        p_cand = parts[0]
+                        if "env" in p_cand and len(parts) > 1: p_cand = parts[1]
+                        if os.path.exists(p_cand): python_path = p_cand
+        except: pass
+
+        # 2. Fallback to looking in the same directory
         if not python_path:
-            try:
-                with open(pip_path, 'rb') as f:
-                    line = f.readline()
-                    if line.startswith(b'#!'):
-                        parts = line[2:].strip().decode().split()
-                        if parts:
-                            p_cand = parts[0]
-                            if "env" in p_cand and len(parts) > 1: p_cand = parts[1]
-                            if os.path.exists(p_cand): python_path = p_cand
-            except: pass
-        cmd = UPDATE_TEMPLATES["pip"].format(python_path=python_path or "python3")
+            for possible in [tool_path.name.replace(name, "python"), "python3", "python"]:
+                p_check = tool_path.parent / possible
+                if p_check.exists():
+                    python_path = str(p_check.absolute())
+                    break
+        
+        cmd = UPDATE_TEMPLATES[name].format(python_path=python_path or "python3")
     elif name == "cargo":
         rustup = shutil.which("rustup")
         cmd = f"{rustup} update" if rustup else "rustup update"
@@ -188,23 +205,48 @@ def update_ini_file(path, section, key, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = path.read_text().splitlines() if path.exists() else []
-    section_header, section_found, key_found = f"[{section}]", False, False
-    new_lines, current_section = [], None
+    section_header = f"[{section}]"
+    new_lines = []
+    current_section = None
+    key_found = False
+    changed = False
+
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("[") and stripped.endswith("]"): current_section = stripped
-        if current_section == section_header and (stripped.startswith(f"{key} ") or stripped.startswith(f"{key}=")): key_found = True
+        if stripped.startswith("[") and stripped.endswith("]"):
+            current_section = stripped
+        
+        if current_section == section_header:
+            # Match "key=value" or "key = value" or "key: value"
+            match = re.match(rf"^({re.escape(key)})\s*[:=]\s*(.*)$", stripped)
+            if match:
+                key_found = True
+                current_val = match.group(2)
+                if current_val != str(value):
+                    new_lines.append(f"{key} = {value}")
+                    changed = True
+                    continue
         new_lines.append(line)
-    if key_found: return False
-    target_idx = -1
-    for i, line in enumerate(new_lines):
-        if line.strip() == section_header: target_idx = i + 1; section_found = True; break
-    if section_found: new_lines.insert(target_idx, f"{key} = {value}")
-    else:
-        if new_lines and new_lines[-1].strip() != "": new_lines.append("")
-        new_lines.append(section_header); new_lines.append(f"{key} = {value}")
-    path.write_text("\n".join(new_lines) + "\n")
-    return True
+
+    if not key_found:
+        section_idx = -1
+        for i, line in enumerate(new_lines):
+            if line.strip() == section_header:
+                section_idx = i
+                break
+        
+        if section_idx != -1:
+            new_lines.insert(section_idx + 1, f"{key} = {value}")
+        else:
+            if new_lines and new_lines[-1].strip() != "":
+                new_lines.append("")
+            new_lines.append(section_header)
+            new_lines.append(f"{key} = {value}")
+        changed = True
+
+    if changed:
+        path.write_text("\n".join(new_lines) + "\n")
+    return changed
 
 def update_file_idempotent(path, line, comment=None):
     path = Path(path)
@@ -279,6 +321,17 @@ def configure_python_ecosystem():
                 else: version_too_low("pip", v, MIN_PIP_VERSION, path)
             else: info(f"pip: Could not verify version at {path}")
     
+    pipx_bins = find_binaries("pipx")
+    if pipx_bins:
+        for path in pipx_bins:
+            v = get_tool_version(path, "pipx")
+            if v:
+                if parse_version(v) >= MIN_PIPX_VERSION:
+                    success(f"Verified pipx at {path} (v{v})")
+                else: version_too_low("pipx", v, MIN_PIPX_VERSION, path)
+            else: info(f"pipx: Could not verify version at {path}")
+    else: info("pipx: Not found in PATH.")
+
     uv_bins = find_binaries("uv")
     if uv_bins:
         for path in uv_bins: success(f"Found uv at {path}. Env vars applied.")
@@ -296,19 +349,39 @@ def configure_python_ecosystem():
             else: info(f"Conda: Could not verify version at {path}")
     else: info("Conda: Binary not found in PATH.")
 
-    pip_dynamic = 'PIP_UPLOADED_PRIOR_TO=$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=' + str(COOLDOWN_DAYS) + ')).isoformat() + \'Z\')")'
+    pip_dynamic = 'PIP_UPLOADED_PRIOR_TO=$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=' + str(COOLDOWN_DAYS) + ')).strftime(\'%Y-%m-%dT%H:%M:%SZ\'))")'
     uv_env = f'UV_EXCLUDE_NEWER="{COOLDOWN_DAYS} days ago"'
+    pip_dynamic_line = f'export {pip_dynamic}'
+    uv_env_line = f'export {uv_env}'
     profiles = [p for p in [Path.home() / ".zshrc", Path.home() / ".bashrc", Path.home() / ".bash_profile"] if p.exists()]
+    
     for p in profiles:
         content = p.read_text()
-        with open(p, "a") as f:
-            added = False
-            if "PIP_UPLOADED_PRIOR_TO" not in content: f.write(f"\n# 7days\nexport {pip_dynamic}\n"); added = True
-            if "UV_EXCLUDE_NEWER" not in content: 
-                if not added: f.write("\n# 7days\n")
-                f.write(f"export {uv_env}\n"); added = True
-            if added: success(f"Injected rolling gate variables into {p.name}")
-            else: info(f"Shell Profiles: {p.name} already configured")
+        new_content = content
+        added = False
+        
+        # Aggressively replace static/invalid PIP_UPLOADED_PRIOR_TO
+        if "PIP_UPLOADED_PRIOR_TO" in content:
+            # Replace lines like 'export PIP_UPLOADED_PRIOR_TO=P7D' or similar
+            new_content = re.sub(r'^#? ?export PIP_UPLOADED_PRIOR_TO=.*$', pip_dynamic_line, new_content, flags=re.MULTILINE)
+            if new_content != content:
+                added = True
+        else:
+            new_content += f"\n# 7days\n{pip_dynamic_line}\n"
+            added = True
+            
+        if "UV_EXCLUDE_NEWER" not in new_content:
+            if "# 7days" not in new_content:
+                new_content += f"\n# 7days\n{uv_env_line}\n"
+            else:
+                new_content = new_content.replace("# 7days", f"# 7days\n{uv_env_line}")
+            added = True
+
+        if added:
+            p.write_text(new_content)
+            success(f"Configured rolling gate variables in {p.name}")
+        else:
+            info(f"Shell Profiles: {p.name} already configured")
 
 def configure_others():
     log("Checking other package managers...")

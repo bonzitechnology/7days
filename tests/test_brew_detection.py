@@ -12,7 +12,7 @@ import setup_7days
 class TestBrewDetection(unittest.TestCase):
     def setUp(self):
         # Create a mock Homebrew Cellar structure
-        self.test_root = Path("/tmp/mock_brew")
+        self.test_root = Path("tests/mock_brew")
         if self.test_root.exists():
             shutil.rmtree(self.test_root)
         
@@ -37,7 +37,7 @@ class TestBrewDetection(unittest.TestCase):
         self.assertTrue(setup_7days.is_homebrew_managed(self.npm_real_path))
         
         # Test non-brew path
-        dummy = Path("/tmp/some-other-tool")
+        dummy = self.test_root / "some-other-tool"
         dummy.write_text("test")
         self.assertFalse(setup_7days.is_homebrew_managed(dummy))
 

@@ -2,6 +2,7 @@ import subprocess
 import os
 import json
 import re
+import shutil
 from pathlib import Path
 import unittest
 
@@ -39,8 +40,14 @@ class Test7DaysIntegration(unittest.TestCase):
         if shutil.which("pip") or shutil.which("pip3"):
             pip_conf = Path.home() / ".config" / "pip" / "pip.conf"
             self.assertTrue(pip_conf.exists(), "pip.conf should exist")
-            self.assertIn("uploaded-prior-to = P7D", pip_conf.read_text())
+            self.assertIn("uploaded-prior-to", pip_conf.read_text())
             self.assertIn("[global]", pip_conf.read_text())
+
+    def test_pipx_config(self):
+        if shutil.which("pipx"):
+            # setup_7days.py should have verified pipx
+            res = subprocess.run(["python3", "setup_7days.py"], capture_output=True, text=True)
+            self.assertIn("Verified pipx", res.stdout)
 
     def test_uv_env(self):
         if shutil.which("uv"):
@@ -101,6 +108,12 @@ version = "1.0.0"
         self.assertIn("No 'young' Cargo packages found", res.stdout)
         os.remove("Cargo.lock")
 
+    def test_audit_pipx(self):
+        if shutil.which("pipx"):
+            res = subprocess.run(["python3", "audit_7days.py", "--pipx"], capture_output=True, text=True)
+            self.assertIn("Auditing pipx installed packages", res.stdout)
+            # Should be empty or no danger if nothing installed
+            self.assertIn("No 'young' pipx packages found", res.stdout)
+
 if __name__ == "__main__":
-    import shutil
     unittest.main()

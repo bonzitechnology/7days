@@ -50,11 +50,22 @@ class TestIntegration(unittest.TestCase):
             # Try to force it in CI
             if not os.environ.get("GITHUB_ACTIONS"): self.skipTest("pip too old")
         print("CHECK: Blockade (100-year gate)")
-        res = subprocess.run([sys.executable, "-m", "pip", "install", "requests", "--uploaded-prior-to", "P36500D", "--dry-run"], capture_output=True, text=True)
+        res = subprocess.run([sys.executable, "-m", "pip", "install", "requests", "--uploaded-prior-to", "2000-01-01T00:00:00Z", "--dry-run"], capture_output=True, text=True)
         output = (res.stdout + res.stderr).lower()
         if res.returncode != 0 and ("uploaded-prior-to" in output or "no matching" in output):
             print("CONCLUSION: SUCCESS")
         else: self.fail(f"PIP blockade failed. Output: {output}")
+
+    def test_pipx_enforcement(self):
+        print_header("PIPX")
+        if not shutil.which("pipx"): self.skipTest("PIPX not found")
+        v = self._get_version("pipx")
+        if v < (1, 7, 0): self.skipTest(f"PIPX version {v} too old")
+        print("CHECK: Version Verification")
+        res = subprocess.run(["python3", "setup_7days.py"], capture_output=True, text=True)
+        if "Verified pipx" in res.stdout:
+            print("CONCLUSION: SUCCESS")
+        else: self.fail("PIPX verification failed in setup_7days.py")
 
     def test_pnpm_enforcement(self):
         print_header("PNPM")
