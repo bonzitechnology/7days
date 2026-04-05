@@ -22,7 +22,7 @@ The utility enforces a delay between the timestamp of a package release and its 
 | **Composer** | audit-only | N/A | `audit_7days.py` scan |
 | **Ruby** | mirror | N/A | `source "https://beta.gem.coop"` |
 
-## Usage Policy
+## Intended Usage
 This utility is intended for deployment on development and personal workstations. For production environments or corporate infrastructure, the use of managed internal artifact repositories (e.g., Artifactory, Nexus) with established auditing and promotion workflows is recommended.
 
 ## Components
