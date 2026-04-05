@@ -68,6 +68,13 @@ bash tests/run_tests.sh
     docker run --rm 7days-test python3 tests/empirical_test.py
     ```
 
+## Known Limitations
+
+The following package managers do not currently support native release age enforcement:
+
+*   **Composer:** Not natively supported. The community has requested this feature, but it has not yet been implemented. See [Composer Issue #12633](https://github.com/composer/composer/issues/12633) (Status: Not supported as of 2026-04-05). Use `audit_7days.py` for post-install verification.
+*   **Homebrew:** Support is not planned by the maintainers. See [Homebrew Issue #21129](https://github.com/Homebrew/brew/issues/21129). It is recommended to use `brew audit` or periodic manual reviews.
+
 ## Manual Overrides
 To bypass enforcement for specific operations (e.g., urgent security patching):
 *   **npm/Bun:** `--min-release-age 0`
