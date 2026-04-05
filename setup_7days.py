@@ -16,7 +16,6 @@ MIN_BUN_VERSION = (1, 3, 0)
 MIN_DENO_VERSION = (2, 0, 0)
 MIN_PIP_VERSION = (26, 0, 0)
 MIN_PIPX_VERSION = (1, 7, 0)
-MIN_COMPOSER_VERSION = (2, 10, 0)
 MIN_CONDA_VERSION = (26, 3, 0)
 MIN_CARGO_VERSION = (1, 94, 0)
 
@@ -50,7 +49,6 @@ BREW_FORMULAS = {
     "pip": "python",
     "pipx": "pipx",
     "uv": "uv",
-    "composer": "composer",
     "cargo": "rust"
 }
 
@@ -289,8 +287,13 @@ def configure_npm_ecosystem():
                         bunfig = Path.home() / ".bunfig.toml"
                         content = bunfig.read_text() if bunfig.exists() else ""
                         if "minimumReleaseAge" not in content:
+                            if not bunfig.exists():
+                                bunfig.write_text("[install]\n")
+                                content = "[install]\n"
+                            
                             with open(bunfig, "a") as f:
-                                if "[install]" not in content: f.write("\n[install]\n")
+                                if "[install]" not in content:
+                                    f.write("\n[install]\n")
                                 f.write(f"minimumReleaseAge = {COOLDOWN_DAYS * 86400}\n")
                             success(f"Configured Bun at {path} (v{v})")
                         else: info(f"Bun: Already configured at {bunfig}")
@@ -385,24 +388,18 @@ def configure_python_ecosystem():
 
 def configure_others():
     log("Checking other package managers...")
-    for name, min_v in [("composer", MIN_COMPOSER_VERSION), ("cargo", MIN_CARGO_VERSION)]:
+    for name, min_v in [("cargo", MIN_CARGO_VERSION)]:
         bins = find_binaries(name)
         if not bins: info(f"{name}: Binary not found in PATH."); continue
         for path in bins:
             v = get_tool_version(path, name)
             if v:
                 if parse_version(v) >= min_v:
-                    if name == "composer":
-                        try:
-                            subprocess.run([path, "config", "--global", "minimum-release-age", f"{COOLDOWN_DAYS} days"], check=True, capture_output=True)
-                            success(f"Configured Composer at {path} (v{v})")
-                        except subprocess.CalledProcessError:
-                            warn(f"Composer at {path} (v{v}) reported as compatible but failed to set config. Might be a pre-release.")
-                            version_too_low(name, v, min_v, path)
-                    else: success(f"Verified Cargo at {path} (v{v}): Natively protected via crates.io quarantine.")
+                    success(f"Verified Cargo at {path} (v{v}): Natively protected via crates.io quarantine.")
                 else: version_too_low(name, v, min_v, path)
             else: info(f"{name}: Could not verify version at {path}")
 
+    if find_binaries("composer"): warn("Composer: Does not natively support age gates. Use 'audit_7days.py --composer' to scan.")
     if find_binaries("bundle"): warn("Bundler: Requires manual mirror: https://beta.gem.coop")
     else: info("Bundler: Binary not found in PATH.")
     if find_binaries("brew"): warn("Homebrew: Recommended to run 'brew update && brew audit' periodically. See https://github.com/Homebrew/brew/issues/21129 for detail on why cool down is not supported by Homebrew")

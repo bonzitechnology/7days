@@ -33,7 +33,6 @@ ENV PATH="/root/.deno/bin:${PATH}"
 
 # Install UV
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && mv /root/.local/bin/uv /usr/local/bin/uv
-ENV PATH="/usr/local/bin:${PATH}"
 
 # Install Rust/Cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -44,7 +43,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 
 # Set up a global virtual environment for Python to avoid PEP 668
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
+ENV PATH="/opt/venv/bin:/usr/local/bin:${PATH}"
 RUN pip install --upgrade pip pipx
 
 WORKDIR /app

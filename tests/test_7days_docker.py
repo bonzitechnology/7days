@@ -59,19 +59,6 @@ class Test7DaysIntegration(unittest.TestCase):
                     break
             self.assertTrue(found, "UV_EXCLUDE_NEWER not found in shell profiles")
 
-    def test_composer_config(self):
-        if shutil.which("composer"):
-            # Check version first
-            v_out = subprocess.check_output(["composer", "--version"], stderr=subprocess.STDOUT).decode()
-            v_match = re.search(r'Composer version (\d+\.\d+\.\d+)', v_out)
-            if v_match:
-                v = tuple(map(int, v_match.group(1).split('.')))
-                if v >= (2, 10, 0):
-                    res = subprocess.run(["composer", "config", "--global", "minimum-release-age"], capture_output=True, text=True)
-                    self.assertIn("7 days", res.stdout)
-                else:
-                    self.skipTest(f"Composer version {v_match.group(1)} too old for release-age gate")
-
     def test_npm_blockade(self):
         if shutil.which("npm"):
             res = subprocess.run(["npm", "install", "is-sorted", "--min-release-age", "36500", "--dry-run"], capture_output=True, text=True)
