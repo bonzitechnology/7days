@@ -18,8 +18,8 @@ The utility enforces a delay between the timestamp of a package release and its 
 | **pipx** | N/A | v1.7.0+ | Inherits pip/uv environment |
 | **uv** | `--exclude-newer` | v0.5.0+ | `UV_EXCLUDE_NEWER` |
 | **Conda** | `cooldown` | v26.3.0+ | `conda config` |
-| **Composer** | `minimum-release-age` | v2.10.0+ | `composer config --global` |
 | **Cargo** | native | v1.94.0+ | crates.io quarantine status |
+| **Composer** | audit-only | N/A | `audit_7days.py` scan |
 | **Ruby** | mirror | N/A | `source "https://beta.gem.coop"` |
 
 ## Components
