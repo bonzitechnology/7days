@@ -2,7 +2,7 @@
 
 `7days` is a utility for enforcing a 7-day minimum release age on system package managers. It is designed to mitigate supply chain risks by ensuring dependencies have been available in public registries for a sufficient period to allow for community audit or automated retraction.
 
-## Functional Specification
+## Functionality 
 The utility enforces a delay between the timestamp of a package release and its availability for local installation. This period allows for the detection and removal of malicious or broken releases before they are ingested into a development or production environment.
 
 ## Supported Package Managers
