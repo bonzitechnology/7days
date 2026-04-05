@@ -248,14 +248,52 @@ def update_ini_file(path, section, key, value):
 
 def update_file_idempotent(path, line, comment=None):
     path = Path(path)
-    content = path.read_text() if path.exists() else ""
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            if comment: f.write(f"# {comment}\n")
+            f.write(line + "\n")
+        return True
+
+    content = path.read_text()
+    lines = content.splitlines()
     key = line.split('=')[0].strip() if '=' in line else line.split(':')[0].strip()
-    if key in content: return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a") as f:
-        if comment: f.write(f"\n# {comment}\n")
-        f.write(line + "\n")
-    return True
+    
+    # Escape key for regex
+    key_esc = re.escape(key)
+    # Match key followed by : or = and then any value
+    pattern = rf"^({key_esc})\s*[:=]\s*(.*)$"
+    
+    new_lines = []
+    found = False
+    changed = False
+    
+    for l in lines:
+        match = re.match(pattern, l.strip())
+        if match:
+            found = True
+            current_val = match.group(2).strip().strip('"').strip("'")
+            new_val = line.split('=', 1)[1].strip().strip('"').strip("'") if '=' in line else line.split(':', 1)[1].strip().strip('"').strip("'")
+            
+            if current_val != new_val:
+                new_lines.append(line)
+                changed = True
+            else:
+                new_lines.append(l)
+        else:
+            new_lines.append(l)
+            
+    if not found:
+        if new_lines and new_lines[-1].strip() != "":
+            new_lines.append("")
+        if comment: new_lines.append(f"# {comment}")
+        new_lines.append(line)
+        changed = True
+        
+    if changed:
+        path.write_text("\n".join(new_lines) + "\n")
+        
+    return changed
 
 def configure_npm_ecosystem():
     log("Checking Node.js/JS ecosystem...")
@@ -284,25 +322,29 @@ def configure_npm_ecosystem():
             if v:
                 if parse_version(v) >= min_v:
                     if name == "bun":
-                        bunfig = Path.home() / ".bunfig.toml"
-                        content = bunfig.read_text() if bunfig.exists() else ""
-                        if "minimumReleaseAge" not in content:
-                            if not bunfig.exists():
-                                bunfig.write_text("[install]\n")
-                                content = "[install]\n"
-                            
-                            with open(bunfig, "a") as f:
-                                if "[install]" not in content:
-                                    f.write("\n[install]\n")
-                                f.write(f"minimumReleaseAge = {COOLDOWN_DAYS * 86400}\n")
+                        if update_ini_file(Path.home() / ".bunfig.toml", "install", "minimumReleaseAge", COOLDOWN_DAYS * 86400):
                             success(f"Configured Bun at {path} (v{v})")
-                        else: info(f"Bun: Already configured at {bunfig}")
+                        else: info(f"Bun: Already configured at {path}")
                     else:
                         deno_json = Path.home() / ".deno.json"
-                        if not deno_json.exists():
-                            deno_json.write_text(f'{{\n  "minimumDependencyAge": "P{COOLDOWN_DAYS}D"\n}}\n')
-                            success(f"Configured Deno at {path} (v{v})")
-                        else: info(f"Deno: Already configured at {deno_json}")
+                        config_val = f"P{COOLDOWN_DAYS}D"
+                        changed = False
+                        if deno_json.exists():
+                            try:
+                                data = json.loads(deno_json.read_text())
+                                if data.get("minimumDependencyAge") != config_val:
+                                    data["minimumDependencyAge"] = config_val
+                                    deno_json.write_text(json.dumps(data, indent=2) + "\n")
+                                    changed = True
+                            except: # If corrupted, overwrite
+                                deno_json.write_text(f'{{\n  "minimumDependencyAge": "{config_val}"\n}}\n')
+                                changed = True
+                        else:
+                            deno_json.write_text(f'{{\n  "minimumDependencyAge": "{config_val}"\n}}\n')
+                            changed = True
+                        
+                        if changed: success(f"Configured Deno at {path} (v{v})")
+                        else: info(f"Deno: Already configured at {path}")
                 else: version_too_low(name, v, min_v, path)
             else: info(f"{name}: Could not verify version at {path}")
 
