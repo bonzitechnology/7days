@@ -14,7 +14,7 @@ The utility enforces a delay between the timestamp of a package release and its 
 | **Yarn** | `npmMinimalAgeGate` | v4.10.0+ | `.yarnrc.yml` |
 | **Bun** | `minimumReleaseAge` | v1.3.0+ | `bunfig.toml` (seconds) |
 | **Deno** | `minimumDependencyAge`| v2.0.0+ | `.deno.json` |
-| **pip** | `uploaded-prior-to` | v26.0.0+ | `pip.conf` & Environment Variable |
+| **pip** | `uploaded-prior-to` | v26.0.0+ | `pip.conf` & Environment Variable (v26.1+ supports `P7D` dynamic gate) |
 | **pipx** | N/A | v1.7.0+ | Inherits pip/uv environment |
 | **uv** | `--exclude-newer` | v0.5.0+ | `UV_EXCLUDE_NEWER` |
 | **Conda** | `cooldown` | v26.3.0+ | `conda config` |

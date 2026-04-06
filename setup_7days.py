@@ -353,12 +353,22 @@ def configure_python_ecosystem():
     search_names = ["pip", "pip3"] + [f"pip3.{i}" for i in range(10, 16)]
     all_pips = []
     for name in search_names: all_pips.extend(find_binaries(name))
-    if not all_pips: info("pip: No binaries found in PATH.")
+    
+    has_new_pip = False
+    if not all_pips:
+        info("pip: No binaries found in PATH.")
     else:
         for path in sorted(list(set(all_pips))):
             v = get_tool_version(path, "pip")
             if v:
-                if parse_version(v) >= MIN_PIP_VERSION:
+                parsed_v = parse_version(v)
+                if parsed_v >= (26, 1, 0):
+                    has_new_pip = True
+                    config_val = f"P{COOLDOWN_DAYS}D"
+                    if update_ini_file(Path.home() / ".config" / "pip" / "pip.conf", "global", "uploaded-prior-to", config_val):
+                        success(f"Configured pip at {path} (with dynamic gate {config_val})")
+                    else: info(f"pip: Already configured in pip.conf for {path}")
+                elif parsed_v >= MIN_PIP_VERSION:
                     now_minus_cooldown = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=COOLDOWN_DAYS)).strftime('%Y-%m-%dT%H:%M:%SZ')
                     if update_ini_file(Path.home() / ".config" / "pip" / "pip.conf", "global", "uploaded-prior-to", now_minus_cooldown):
                         success(f"Configured pip at {path} (with static gate {now_minus_cooldown})")
@@ -394,7 +404,11 @@ def configure_python_ecosystem():
             else: info(f"Conda: Could not verify version at {path}")
     else: info("Conda: Binary not found in PATH.")
 
-    pip_dynamic = 'PIP_UPLOADED_PRIOR_TO=$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=' + str(COOLDOWN_DAYS) + ')).strftime(\'%Y-%m-%dT%H:%M:%SZ\'))")'
+    if has_new_pip:
+        pip_dynamic = f'PIP_UPLOADED_PRIOR_TO="P{COOLDOWN_DAYS}D"'
+    else:
+        pip_dynamic = 'PIP_UPLOADED_PRIOR_TO=$(python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=' + str(COOLDOWN_DAYS) + ')).strftime(\'%Y-%m-%dT%H:%M:%SZ\'))")'
+    
     uv_env = f'UV_EXCLUDE_NEWER="{COOLDOWN_DAYS} days ago"'
     pip_dynamic_line = f'export {pip_dynamic}'
     uv_env_line = f'export {uv_env}'
